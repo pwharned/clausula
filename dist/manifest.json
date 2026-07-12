@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Clausula",
+  "version": "0.1.0",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["js/main.js"],
+    "css": ["style.css"]
+  }],
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://localhost:8765/*",
+    "https://translate.google.com/*",
+    "https://translate.googleapis.com/*"
+  ]
+}
+
