@@ -1,105 +1,47 @@
-# Archipelago
+# Clausula
 
-A full-stack Scala 3 web application template built around the islands architecture pattern.
+A browser extension for creating Anki cloze deletion cards from text on any webpage. Built for language learners who use sentence mining as part of their study workflow.
 
-## What this is
+## What it does
 
-The core idea: the server serves plain HTML pages. Interactive functionality is provided by small, independent ScalaJS modules ("islands") that mount into specific elements on the page. All client-server communication goes through a single WebSocket connection using a shared typed message protocol.
+Hover over any word on a webpage while holding Shift. Clausula extracts the surrounding sentence, generates a cloze deletion card with the word hidden, fetches a translation and audio pronunciation, then sends it directly to Anki.
 
-No REST endpoints. No SPA framework. No shared mutable state between islands except through the server.
+## Requirements
+
+- [Anki](https://apps.ankiweb.net/)
+- [AnkiConnect](https://ankiweb.net/shared/info/2055492159) (Anki add-on code: `2055492159`)
+- mpv (for audio playback on Linux)
+
+## Installation
+
+1. Clone the repository
+2. Run `sbt frontend/fastLinkJS`
+3. Go to `chrome://extensions`
+4. Enable Developer Mode
+5. Click Load Unpacked and select the `dist` folder
+
+## Usage
+
+- Hold **Shift** and hover over a word to open the popup
+- Release **Shift** to freeze the popup
+- Click **Create Card** to add it to Anki
+
+Cards are added to your Default deck using the Cloze note type. The sentence forms the front of the card with the target word hidden, and the English translation goes on the back along with audio.
+
+## Building
+
+```bash
+sbt frontend/fastLinkJS    # development
+sbt frontend/fullLinkJS    # production
+```
 
 ## Stack
 
-- **Backend**: http4s + cats-effect + fs2
-- **Frontend**: ScalaJS + Laminar
-- **Shared**: Scala 3 cross-compiled domain models and WebSocket protocol
-- **Serialization**: jsoniter-scala
+- ScalaJS + Laminar
+- AnkiConnect
+- Google Translate (unofficial API)
+- Google TTS (unofficial API)
 
-## Project structure
+## Notes
 
-```
-shared/     - domain models and WS message ADTs, compiled for JVM and JS
-backend/    - http4s server, WebSocket handler, static asset serving
-frontend/   - Laminar islands, compiled to ES modules
-static/     - plain HTML files (not generated, not templated)
-```
-
-## How it works
-
-The shared module defines the entire client-server contract:
-
-```scala
-enum ClientMessage:
-  case Increment
-  case Decrement
-  case Reset
-
-enum ServerMessage:
-  case CountUpdated(value: Int)
-  case Error(msg: String)
-```
-
-Both sides are bound to this ADT. Adding a new message type is a compile error until both sides handle it.
-
-On the frontend, islands communicate exclusively through `AppBus`:
-
-```scala
-// send
-AppBus.outgoing.emit(ClientMessage.Increment)
-
-// receive
-AppBus.incoming.events.collect:
-  case ServerMessage.CountUpdated(v) => v
-```
-
-Islands know nothing about WebSockets, serialization or connection state. `WsClient` owns the connection and handles reconnection with exponential backoff. Disconnection is surfaced via CSS on `#app-container` - no connection logic leaks into domain islands.
-
-## Running in development
-
-```bash
-# terminal 1 - recompile frontend on change
-sbt ~frontend/fastLinkJS
-
-# terminal 2 - run backend with filesystem asset serving
-MODE=DEV sbt ~backend/reStart
-```
-
-Open `http://localhost:8080`.
-
-The browser auto-reloads when the backend restarts via a lightweight SSE endpoint that only exists in dev mode.
-
-## Production build
-
-```bash
-sbt backend/package
-```
-
-This compiles the frontend with full optimisation, copies the JS output into the backend jar alongside the HTML files, and produces a self-contained artifact. Set `MODE=PROD` (or omit `MODE` entirely) at runtime.
-
-## Adding an island
-
-1. Create a new file in `frontend/src/main/scala/.../islands/`
-2. Export a mount function:
-
-```scala
-@JSExportTopLevel("mountMyIsland", moduleID = "myisland")
-def mount(el: dom.Element): Unit = ...
-```
-
-3. Add a mount point in your HTML:
-
-```html
-<div id="my-island"></div>
-<script type="module">
-  import { mountMyIsland } from "/js/myisland.js";
-  mountMyIsland(document.getElementById("my-island"));
-</script>
-```
-
-4. Add message types to the shared protocol if needed.
-
-No routing configuration. No new endpoints. The WS handler picks up new message types automatically once they are added to the ADT.
-
-## Adding a backend handler
-
-Implement `MessageHandler[IO, ClientMessage]` and wire it into `WsHandler.make` in `Main.scala`. The handler receives a `publish` function for sending messages to all connected clients and is otherwise free to depend on whatever it needs (database connections, HTTP clients, etc.).
+This extension uses unofficial Google APIs which may break without warning. Cards are deduplicated automatically by AnkiConnect. Currently optimised for learning non-English languages from native content.
