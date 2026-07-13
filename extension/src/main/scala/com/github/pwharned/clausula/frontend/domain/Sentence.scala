@@ -1,6 +1,8 @@
 package com.github.pwharned.clausula.extension.domain
 opaque type Sentence = String
 object Sentence:
+  given s: ToText[Sentence] with
+    def value(s: Sentence): String = s.value
   def apply(s: String): Either[ValidationError, Sentence] =
     Either.cond(s.trim.nonEmpty, s.trim, EmptySentence)
   def unsafe(s: String): Sentence = s

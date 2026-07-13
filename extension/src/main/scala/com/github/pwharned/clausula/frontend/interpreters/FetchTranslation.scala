@@ -5,16 +5,18 @@ import org.scalajs.dom
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.scalajs.js
+
 class FetchTranslation extends Translation[Future]:
-  def translate(
-    text: Sentence,
+  def translate[A](
+    text: A,
     source: Language,
     target: Language
-  ): Future[Either[AppError, TranslationResult]] =
+  )(using t: ToText[A]): Future[Either[AppError, TranslationResult]] =
     val p = scala.scalajs.js.Promise[Either[AppError, TranslationResult]]((resolve, _) =>
+
       val message = js.Dynamic.literal(
         `type` = "TRANSLATE_REQUEST",
-        text = text.value,
+        text = t.value(text),
         langSrc = source.code,
         langTgt = target.code
       )

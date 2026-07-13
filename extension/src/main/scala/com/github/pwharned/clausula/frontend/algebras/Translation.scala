@@ -2,8 +2,8 @@ package com.github.pwharned.clausula.extension.algebras
 import com.github.pwharned.clausula.extension.domain.*
 
 trait Translation[F[_]]:
-  def translate(
-    text: Sentence,
+  def translate[A](
+    text: A,
     source: Language,
     target: Language
-  ): F[Either[AppError, TranslationResult]]
+  )(using t: ToText[A]): F[Either[AppError, TranslationResult]]

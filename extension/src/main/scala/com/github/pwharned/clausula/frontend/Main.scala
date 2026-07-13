@@ -7,6 +7,7 @@ import org.scalajs.dom
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 object Main:
+
   private def createCard(
     ankiClient: FetchAnkiClient,
     clozeText: ClozeText,
@@ -54,22 +55,36 @@ object Main:
                 AppBus.popupState.set(PopupState.Failed(err))
               case Right(clozeText) =>
                 // Run translation and audio in parallel
-                val translationF: Future[Either[AppError, TranslationResult]] =
-                  translator.translate(sentence, lang, KnownLanguage.English)
-                val audioF = translationF.flatMap(x =>
-                  x match
-                    case Left(value) => audio.generate(word, sentence, lang)
+                //
+                for {
+
+                  translationSentence <-
+                    translator.translate[Sentence](sentence, lang, KnownLanguage.English)
+                  translationWord <-
+                    translator
+                      .translate(
+                        word,
+                        translationSentence.toOption.flatMap(x => x.detectedLanguage).getOrElse(KnownLanguage.Auto),
+                        KnownLanguage.English
+                      )
+                      .map(_.toOption)
+
+                  audioTag <- translationSentence match
+                    case Left(value) => audio.generate(word, sentence, lang).map(_.toOption)
                     case Right(value) =>
-                      audio.generate(word, sentence, value.detectedLanguage.getOrElse(lang))
-                )
-                for
-                  translationResult <- translationF
-                  audioResult <- audioF
-                yield
-                  val translation = translationResult.toOption.map(x => x.text)
-                  val audioTag = audioResult.toOption
-                  dom.console.log(s"Translation: $translation, Audio: $audioTag")
-                  createCard(ankiClient, clozeText, translation, audioTag, lang)
+                      audio.generate(word, sentence, value.detectedLanguage.getOrElse(lang)).map(_.toOption)
+
+                } yield translationSentence match
+                  case Right(value) =>
+                    createCard(
+                      ankiClient,
+                      clozeText,
+                      Some(s"${translationWord.map(_.text).getOrElse("")} :  ${value.text}"),
+                      audioTag,
+                      lang
+                    )
+                  case Left(error) => AppBus.popupState.set(PopupState.Failed(error))
+
           case null => ()
       }(using unsafeWindowOwner)
     // Mouse hover handler
