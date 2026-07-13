@@ -1,5 +1,5 @@
 package com.github.pwharned.clausula.extension.interpreters
-import com.github.pwharned.clausula.extension.algebras.Translation
+import com.github.pwharned.clausula.extension.algebras.*
 import com.github.pwharned.clausula.extension.domain.*
 import org.scalajs.dom
 import scala.concurrent.Future
@@ -10,8 +10,8 @@ class FetchTranslation extends Translation[Future]:
     text: Sentence,
     source: Language,
     target: Language
-  ): Future[Either[AppError, String]] =
-    val p = scala.scalajs.js.Promise[Either[AppError, String]]((resolve, _) =>
+  ): Future[Either[AppError, TranslationResult]] =
+    val p = scala.scalajs.js.Promise[Either[AppError, TranslationResult]]((resolve, _) =>
       val message = js.Dynamic.literal(
         `type` = "TRANSLATE_REQUEST",
         text = text.value,
@@ -28,9 +28,15 @@ class FetchTranslation extends Translation[Future]:
           else if response == null || response == js.undefined then
             resolve(Left(ApiError(0, "No response from background worker")))
           else if response.success.asInstanceOf[Boolean] then
-            val result = response.result.asInstanceOf[String]
-            dom.console.log(s"Translation result: of  ${source.code} to ${target.code}  $result")
-            resolve(Right(result))
+            val translatedText = response.result.asInstanceOf[String]
+            // Parse detected language if present
+            val detectedLang = response.detectedLang match
+              case lang if lang == null || lang == js.undefined => None
+              case lang                                         => Language.fromCode(lang.asInstanceOf[String]).toOption
+            dom.console.log(
+              s"Translation result: ${source.code} to ${target.code} $translatedText, detected: $detectedLang"
+            )
+            resolve(Right(TranslationResult(translatedText, detectedLang)))
           else
             val error = response.error.asInstanceOf[String]
             dom.console.error(s"Translation error: $error")

@@ -38,7 +38,6 @@ object HoverPopupIsland:
   ): HtmlElement =
     div(
       cls := "clausula-popup",
-      div(cls := "clausula-hint", "Release shift to freeze"),
       div(
         cls := "clausula-word",
         strong(word.value)

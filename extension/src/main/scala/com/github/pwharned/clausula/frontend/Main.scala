@@ -5,6 +5,7 @@ import com.github.pwharned.clausula.extension.domain.*
 import com.raquo.laminar.api.L.*
 import org.scalajs.dom
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 object Main:
   private def createCard(
     ankiClient: FetchAnkiClient,
@@ -53,13 +54,19 @@ object Main:
                 AppBus.popupState.set(PopupState.Failed(err))
               case Right(clozeText) =>
                 // Run translation and audio in parallel
-                val translationF = translator.translate(sentence, lang, Language.English)
-                val audioF = audio.generate(word, sentence, lang)
+                val translationF: Future[Either[AppError, TranslationResult]] =
+                  translator.translate(sentence, lang, Language.English)
+                val audioF = translationF.flatMap(x =>
+                  x match
+                    case Left(value) => audio.generate(word, sentence, lang)
+                    case Right(value) =>
+                      audio.generate(word, sentence, value.detectedLanguage.getOrElse(lang))
+                )
                 for
                   translationResult <- translationF
                   audioResult <- audioF
                 yield
-                  val translation = translationResult.toOption
+                  val translation = translationResult.toOption.map(x => x.text)
                   val audioTag = audioResult.toOption
                   dom.console.log(s"Translation: $translation, Audio: $audioTag")
                   createCard(ankiClient, clozeText, translation, audioTag, lang)
@@ -67,42 +74,40 @@ object Main:
       }(using unsafeWindowOwner)
     // Mouse hover handler
     dom.document.addEventListener(
-      "mouseover",
+      "mouseup",
       (event: dom.MouseEvent) =>
         AppBus.popupState.now() match
-          case PopupState.Creating   => ()
-          case PopupState.Created(_) => ()
+          case PopupState.Creating => ()
+          case PopupState.Created(_) =>
+            AppBus.popupState.set(PopupState.Hidden)
           case _ =>
-            if event.shiftKey then ()
+            val selection = dom.window.getSelection()
+            if selection == null || selection.toString.trim.isEmpty then AppBus.popupState.set(PopupState.Hidden)
             else
-              extractor
-                .extractWord(event)
-                .foreach:
-                  case Left(_) =>
-                    AppBus.popupState.set(PopupState.Hidden)
-                  case Right(word) =>
-                    extractor
-                      .extractSentence(
-                        word,
-                        event.target.asInstanceOf[dom.Node]
-                      )
-                      .foreach:
-                        case Left(_) =>
-                          AppBus.popupState.set(PopupState.Hidden)
-                        case Right(sentence) =>
-                          extractor
-                            .detectLanguage(sentence)
-                            .foreach:
-                              case Left(_) =>
-                                AppBus.popupState.set(PopupState.Hidden)
-                              case Right(lang) =>
-                                val preview: PopupState.Preview = PopupState.Preview(
-                                  word,
-                                  sentence,
-                                  lang,
-                                  (event.clientX, event.clientY)
-                                )
-                                AppBus.position.set((event.clientX, event.clientY))
-                                AppBus.lastPreview = Some(preview)
-                                AppBus.popupState.set(preview)
+              val selectedText = selection.toString.trim
+              val node = selection.anchorNode
+              Word(selectedText) match
+                case Left(_) => AppBus.popupState.set(PopupState.Hidden)
+                case Right(word) =>
+                  extractor
+                    .extractSentence(word, node)
+                    .foreach:
+                      case Left(_) =>
+                        AppBus.popupState.set(PopupState.Hidden)
+                      case Right(sentence) =>
+                        extractor
+                          .detectLanguage(sentence)
+                          .foreach:
+                            case Left(_) =>
+                              AppBus.popupState.set(PopupState.Hidden)
+                            case Right(lang) =>
+                              val preview: PopupState.Preview = PopupState.Preview(
+                                word,
+                                sentence,
+                                lang,
+                                (event.clientX, event.clientY)
+                              )
+                              AppBus.position.set((event.clientX, event.clientY))
+                              AppBus.lastPreview = Some(preview)
+                              AppBus.popupState.set(preview)
     )

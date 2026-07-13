@@ -26,7 +26,39 @@ async function fetchAudio(word, sentence, lang) {
   const base64     = btoa(binary)
   return base64
 }
-
+function parseTranslation(responseText) {
+  const lines = responseText.split('\n')
+  for (const line of lines) {
+    if (line.includes('MkEWBc')) {
+      try {
+        const parsed       = JSON.parse(line)
+        const inner        = JSON.parse(parsed[0][2])
+        const response     = inner[1][0]
+        const detectedLang = inner[0][2]  // detected language code
+        let translatedText = ""
+        if (response.length === 1) {
+          if (response[0].length > 5) {
+            const sentences = response[0][5]
+            for (const sentence of sentences) {
+              translatedText += sentence[0].trim() + " "
+            }
+            translatedText = translatedText.trim()
+          } else {
+            translatedText = response[0][0]
+          }
+        } else if (response.length === 2) {
+          translatedText = response.map(r => r[0]).join(" ")
+        }
+        return { translation: translatedText, detectedLang }
+      } catch(e) {
+        console.error("Parse error:", e)
+        return null
+      }
+    }
+  }
+  return null
+}
+// Update the TRANSLATE_REQUEST handler
 async function hashText(text) {
   const encoder    = new TextEncoder()
   const data       = encoder.encode(text)
@@ -70,15 +102,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     .catch(err => sendResponse({ success: false, error: err.toString() }))
     return true
   }
-  if (message.type === "TRANSLATE_REQUEST") {
-    translateText(message.text, message.langSrc, message.langTgt)
-      .then(result => {
-        if (result) sendResponse({ success: true,  result })
-        else        sendResponse({ success: false, error: "Could not parse translation" })
+
+if (message.type === "TRANSLATE_REQUEST") {
+  translateText(message.text, message.langSrc, message.langTgt)
+    .then(result => {
+      if (result) sendResponse({ 
+        success:      true, 
+        result:       result.translation,
+        detectedLang: result.detectedLang
       })
-      .catch(err => sendResponse({ success: false, error: err.toString() }))
-    return true
-  }
+      else sendResponse({ success: false, error: "Could not parse translation" })
+    })
+    .catch(err => sendResponse({ success: false, error: err.toString() }))
+  return true
+}
   if (message.type === "AUDIO_REQUEST") {
     fetchAudio(message.word, message.sentence, message.lang)
       .then(base64 => storeAudioInAnki(message.word, message.sentence, message.lang, base64))

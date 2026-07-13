@@ -40,7 +40,7 @@ def createClozeCard[F[_]: cats.Monad](
                     anki.addNote(
                       ClozeNote(
                         text = clozeText,
-                        translation = Some(translated),
+                        translation = Some(translated.text),
                         audio = audioResult.toOption,
                         deck = deck,
                         language = lang,
