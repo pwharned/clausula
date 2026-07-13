@@ -8,6 +8,7 @@ function packageRpc(text, langSrc, langTgt) {
 async function fetchAudio(word, sentence, lang) {
   const encodedSentence = encodeURIComponent(sentence)
   const url = `https://translate.googleapis.com/translate_tts?ie=UTF-8&q=${encodedSentence}&tl=${lang}&client=tw-ob`
+  console.log(url)
   const response = await fetch(url, {
     headers: {
       "Referer": "https://translate.google.com/",
@@ -25,38 +26,6 @@ async function fetchAudio(word, sentence, lang) {
   const binary     = bytes.reduce((acc, b) => acc + String.fromCharCode(b), '')
   const base64     = btoa(binary)
   return base64
-}
-function parseTranslation(responseText) {
-  const lines = responseText.split('\n')
-  for (const line of lines) {
-    if (line.includes('MkEWBc')) {
-      try {
-        const parsed       = JSON.parse(line)
-        const inner        = JSON.parse(parsed[0][2])
-        const response     = inner[1][0]
-        const detectedLang = inner[0][2]  // detected language code
-        let translatedText = ""
-        if (response.length === 1) {
-          if (response[0].length > 5) {
-            const sentences = response[0][5]
-            for (const sentence of sentences) {
-              translatedText += sentence[0].trim() + " "
-            }
-            translatedText = translatedText.trim()
-          } else {
-            translatedText = response[0][0]
-          }
-        } else if (response.length === 2) {
-          translatedText = response.map(r => r[0]).join(" ")
-        }
-        return { translation: translatedText, detectedLang }
-      } catch(e) {
-        console.error("Parse error:", e)
-        return null
-      }
-    }
-  }
-  return null
 }
 // Update the TRANSLATE_REQUEST handler
 async function hashText(text) {
@@ -124,36 +93,6 @@ if (message.type === "TRANSLATE_REQUEST") {
     return true
   }
 })
-function parseTranslation(responseText) {
-  const lines = responseText.split('\n')
-  for (const line of lines) {
-    if (line.includes('MkEWBc')) {
-      try {
-        const parsed   = JSON.parse(line)
-        const inner    = JSON.parse(parsed[0][2])
-        const response = inner[1][0]
-        if (response.length === 1) {
-          if (response[0].length > 5) {
-            const sentences = response[0][5]
-            let text = ""
-            for (const sentence of sentences) {
-              text += sentence[0].trim() + " "
-            }
-            return text.trim()
-          } else {
-            return response[0][0]
-          }
-        } else if (response.length === 2) {
-          return response.map(r => r[0]).join(" ")
-        }
-      } catch(e) {
-        console.error("Parse error:", e)
-        return null
-      }
-    }
-  }
-  return null
-}
 async function translateText(text, langSrc, langTgt) {
   const url  = "https://translate.google.com/_/TranslateWebserverUi/data/batchexecute"
   const body = packageRpc(text, langSrc, langTgt)
@@ -169,27 +108,39 @@ async function translateText(text, langSrc, langTgt) {
   const text2 = await response.text()
   return parseTranslation(text2)
 }
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "ANKI_REQUEST") {
-    fetch("http://localhost:8765", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(message.payload)
-    })
-    .then(r => r.json())
-    .then(data => sendResponse({ success: true, data }))
-    .catch(err => sendResponse({ success: false, error: err.toString() }))
-    return true
-  }
-  if (message.type === "TRANSLATE_REQUEST") {
-    translateText(message.text, message.langSrc, message.langTgt)
-      .then(result => {
-        if (result) sendResponse({ success: true,  result })
-        else        sendResponse({ success: false, error: "Could not parse translation" })
-      })
-      .catch(err => sendResponse({ success: false, error: err.toString() }))
-    return true
-  }
-})
 
-
+function parseTranslation(responseText) {
+  const lines = responseText.split('\n')
+  for (const line of lines) {
+    if (line.includes('MkEWBc')) {
+      try {
+        const parsed       = JSON.parse(line)
+        const inner        = JSON.parse(parsed[0][2])
+        const response     = inner[1][0]
+        const detectedLang = inner[0][2]
+        let translatedText = ""
+        // Handle any number of sentences
+        if (response.length === 1 && response[0].length > 5) {
+          const sentences = response[0][5]
+          for (const sentence of sentences) {
+            translatedText += sentence[0].trim() + " "
+          }
+          translatedText = translatedText.trim()
+        } else {
+          // Multiple segments - join them all
+          for (const segment of response) {
+            if (segment[0]) translatedText += segment[0].trim() + " "
+          }
+          translatedText = translatedText.trim()
+        }
+        console.log("Parsed translation:", translatedText)
+        console.log("Detected lang:", detectedLang)
+        return { translation: translatedText, detectedLang }
+      } catch(e) {
+        console.error("Parse error:", e)
+        return null
+      }
+    }
+  }
+  return null
+}

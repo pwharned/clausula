@@ -32,7 +32,7 @@ class FetchTranslation extends Translation[Future]:
             // Parse detected language if present
             val detectedLang = response.detectedLang match
               case lang if lang == null || lang == js.undefined => None
-              case lang                                         => Language.fromCode(lang.asInstanceOf[String]).toOption
+              case lang => Some(Language.fromDetected(lang.asInstanceOf[String]))
             dom.console.log(
               s"Translation result: ${source.code} to ${target.code} $translatedText, detected: $detectedLang"
             )

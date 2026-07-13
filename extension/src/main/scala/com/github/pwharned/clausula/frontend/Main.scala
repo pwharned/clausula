@@ -55,7 +55,7 @@ object Main:
               case Right(clozeText) =>
                 // Run translation and audio in parallel
                 val translationF: Future[Either[AppError, TranslationResult]] =
-                  translator.translate(sentence, lang, Language.English)
+                  translator.translate(sentence, lang, KnownLanguage.English)
                 val audioF = translationF.flatMap(x =>
                   x match
                     case Left(value) => audio.generate(word, sentence, lang)
@@ -76,38 +76,40 @@ object Main:
     dom.document.addEventListener(
       "mouseup",
       (event: dom.MouseEvent) =>
-        AppBus.popupState.now() match
-          case PopupState.Creating => ()
-          case PopupState.Created(_) =>
-            AppBus.popupState.set(PopupState.Hidden)
-          case _ =>
-            val selection = dom.window.getSelection()
-            if selection == null || selection.toString.trim.isEmpty then AppBus.popupState.set(PopupState.Hidden)
-            else
-              val selectedText = selection.toString.trim
-              val node = selection.anchorNode
-              Word(selectedText) match
-                case Left(_) => AppBus.popupState.set(PopupState.Hidden)
-                case Right(word) =>
-                  extractor
-                    .extractSentence(word, node)
-                    .foreach:
-                      case Left(_) =>
-                        AppBus.popupState.set(PopupState.Hidden)
-                      case Right(sentence) =>
-                        extractor
-                          .detectLanguage(sentence)
-                          .foreach:
-                            case Left(_) =>
-                              AppBus.popupState.set(PopupState.Hidden)
-                            case Right(lang) =>
-                              val preview: PopupState.Preview = PopupState.Preview(
-                                word,
-                                sentence,
-                                lang,
-                                (event.clientX, event.clientY)
-                              )
-                              AppBus.position.set((event.clientX, event.clientY))
-                              AppBus.lastPreview = Some(preview)
-                              AppBus.popupState.set(preview)
+        val target = event.target.asInstanceOf[dom.Element]
+        if target.closest("#clausula-root") != null then ()
+        else
+          AppBus.popupState.now() match
+            case PopupState.Creating   => ()
+            case PopupState.Created(_) => ()
+            case _ =>
+              val selection = dom.window.getSelection()
+              if selection == null || selection.toString.trim.isEmpty then AppBus.popupState.set(PopupState.Hidden)
+              else
+                val selectedText = selection.toString.trim
+                val node = selection.anchorNode
+                Word(selectedText) match
+                  case Left(_) => AppBus.popupState.set(PopupState.Hidden)
+                  case Right(word) =>
+                    extractor
+                      .extractSentence(word, node)
+                      .foreach:
+                        case Left(_) =>
+                          AppBus.popupState.set(PopupState.Hidden)
+                        case Right(sentence) =>
+                          extractor
+                            .detectLanguage(sentence)
+                            .foreach:
+                              case Left(_) =>
+                                AppBus.popupState.set(PopupState.Hidden)
+                              case Right(lang) =>
+                                val preview: PopupState.Preview = PopupState.Preview(
+                                  word,
+                                  sentence,
+                                  lang,
+                                  (event.clientX, event.clientY)
+                                )
+                                AppBus.position.set((event.clientX, event.clientY))
+                                AppBus.lastPreview = Some(preview)
+                                AppBus.popupState.set(preview)
     )

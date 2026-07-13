@@ -102,11 +102,11 @@ class DomTextExtraction extends TextExtraction[Future] {
   // removed '\n'
   private def detectByScript(text: String): Language =
     val chars = text.take(200)
-    if chars.exists(c => c >= '\u0400' && c <= '\u04FF') then Language.Russian
-    else if chars.exists(c => c >= '\u3040' && c <= '\u30FF') then Language.Japanese
-    else if chars.exists(c => c >= '\u4E00' && c <= '\u9FFF') then Language.Chinese
+    if chars.exists(c => c >= '\u0400' && c <= '\u04FF') then KnownLanguage.Russian
+    else if chars.exists(c => c >= '\u3040' && c <= '\u30FF') then KnownLanguage.Japanese
+    else if chars.exists(c => c >= '\u4E00' && c <= '\u9FFF') then KnownLanguage.Chinese
     else if chars.exists(c => List('\u06AF', '\u0686', '\u067E', '\u0698', '\u06CC', '\u06A9').contains(c)) then
-      Language.Farsi
-    else if chars.exists(c => c >= '\u0600' && c <= '\u06FF') then Language.Arabic
-    else Language.Auto
+      KnownLanguage.Farsi
+    else if chars.exists(c => c >= '\u0600' && c <= '\u06FF') then KnownLanguage.Arabic
+    else KnownLanguage.Auto
 }
