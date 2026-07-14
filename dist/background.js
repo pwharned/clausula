@@ -18,7 +18,7 @@ async function fetchAudio(word, sentence, lang) {
   if (!response.ok) {
      const errorBody = await response.text()
 
-    throw new Error(`TTS request failed: ${response.status} - ${errorBody}`)
+    throw new Error(`TTS request failed: ${response.status} - ${url}`)
   }
   // Convert audio to base64
   const buffer     = await response.arrayBuffer()

@@ -56,34 +56,38 @@ object Main:
               case Right(clozeText) =>
                 // Run translation and audio in parallel
                 //
-                for {
+                val result = for {
 
                   translationSentence <-
                     translator.translate[Sentence](sentence, lang, KnownLanguage.English)
+                  detectedLang <- Future(
+                    translationSentence.toOption.flatMap(_.detectedLanguage).getOrElse(KnownLanguage.Auto)
+                  )
                   translationWord <-
                     translator
                       .translate(
                         word,
-                        translationSentence.toOption.flatMap(x => x.detectedLanguage).getOrElse(KnownLanguage.Auto),
+                        detectedLang,
                         KnownLanguage.English
                       )
-                      .map(_.toOption)
 
-                  audioTag <- translationSentence match
-                    case Left(value) => audio.generate(word, sentence, lang).map(_.toOption)
-                    case Right(value) =>
-                      audio.generate(word, sentence, value.detectedLanguage.getOrElse(lang)).map(_.toOption)
+                  audioTag <- audio.generate(word, sentence, detectedLang)
 
-                } yield translationSentence match
-                  case Right(value) =>
-                    createCard(
-                      ankiClient,
-                      clozeText,
-                      Some(s"${translationWord.map(_.text).getOrElse("")} :  ${value.text}"),
-                      audioTag,
-                      lang
-                    )
-                  case Left(error) => AppBus.popupState.set(PopupState.Failed(error))
+                } yield for {
+                  t <- translationSentence
+                  a <- audioTag
+                  w <- translationWord
+                } yield createCard(
+                  ankiClient,
+                  clozeText,
+                  Some(s"${w.text} : ${t.text}"),
+                  Some(a),
+                  lang
+                )
+                result.map {
+                  case Left(value)  => AppBus.popupState.set(PopupState.Failed(value))
+                  case Right(value) => value
+                }
 
           case null => ()
       }(using unsafeWindowOwner)

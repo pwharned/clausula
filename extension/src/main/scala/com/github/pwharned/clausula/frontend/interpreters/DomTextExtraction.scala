@@ -40,6 +40,15 @@ class DomTextExtraction extends TextExtraction[Future] {
         result += extractTextWithoutFurigana(child)
         child = child.nextSibling
       result
+  def trimSentence(word: Word, sentence: String): Either[ValidationError, Sentence] =
+    sentence.sliding(200).find(x => x.contains(word.value)) match {
+      case Some(value) =>
+        val lastSpace = value.lastIndexOf(' ')
+        val s = sentence.sliding(word.length).zipWithIndex.find(x => x._1 == word.value).get
+        if s._2 == sentence.length() - word.length then Sentence(value) else Sentence(value.take(lastSpace))
+
+      case None => throw new RuntimeException(s"Could not find word ${word.value} in ${sentence} ")
+    }
   def extractSentence(
     word: Word,
     node: dom.Node
@@ -50,13 +59,13 @@ class DomTextExtraction extends TextExtraction[Future] {
       if text == null || text.isEmpty then Left(SentenceBoundaryNotFound)
       else
         findSentenceContaining(text, word.value) match
-          case Some(sentence) => Sentence(sentence)
+          case Some(sentence) => trimSentence(word, sentence)
           case None =>
             val parentText = node.parentNode match
               case null   => text
               case parent => extractTextWithoutFurigana(parent)
             findSentenceContaining(parentText, word.value) match
-              case Some(sentence) => Sentence(sentence)
+              case Some(sentence) => trimSentence(word, sentence)
               case None           => Left(SentenceBoundaryNotFound)
     }
 

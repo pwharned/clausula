@@ -23,10 +23,19 @@ class FetchAudioGeneration extends AudioGeneration[Future]:
         (response: js.Dynamic) =>
           val lastError = js.Dynamic.global.chrome.runtime.lastError
           if lastError != null && lastError != js.undefined then
-            dom.console.error(s"Audio runtime error: ${lastError.message}")
-            resolve(Left(ApiError(0, lastError.message.asInstanceOf[String])))
+            val message =
+              s"Audio runtime error: ${lastError.message} for {${word.value}, ${sentence.value} ${language.displayName} "
+            dom.console.error(message)
+            resolve(Left(ApiError(0, message)))
           else if response == null || response == js.undefined then
-            resolve(Left(ApiError(0, "No response from background worker")))
+            resolve(
+              Left(
+                ApiError(
+                  0,
+                  s"No response from background worker  for {${word.value}, ${sentence.value} ${language.displayName} "
+                )
+              )
+            )
           else if response.success.asInstanceOf[Boolean] then
             val filename = response.filename.asInstanceOf[String]
             dom.console.log(s"Audio stored: $filename")
@@ -34,7 +43,7 @@ class FetchAudioGeneration extends AudioGeneration[Future]:
             resolve(Right(s"[sound:$filename]"))
           else
             val error = response.error.asInstanceOf[String]
-            dom.console.error(s"Audio error: $error")
+            dom.console.error(s"Audio error: for {${word.value}, ${sentence.value}: ${language.displayName} ")
             resolve(Left(ApiError(0, error)))
       )
     )
