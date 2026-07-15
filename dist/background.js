@@ -93,9 +93,31 @@ if (message.type === "TRANSLATE_REQUEST") {
     return true
   }
 })
+
+
+async function getXsrfToken() {
+  const response = await fetch("https://translate.google.com", {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36"
+    }
+  })
+  const text = await response.text()
+  // Extract XSRF token from page
+  const match = text.match(/FdrFJe["']:\s*["']([^"']+)["']/)
+  if (match) return match[1]
+  // Alternative location
+  const match2 = text.match(/SNlM0e["']:\s*["']([^"']+)["']/)
+  if (match2) return match2[1]
+  console.warn("Could not find XSRF token")
+  return null
+}
 async function translateText(text, langSrc, langTgt) {
-  const url  = "https://translate.google.com/_/TranslateWebserverUi/data/batchexecute"
-  const body = packageRpc(text, langSrc, langTgt)
+  const token = await getXsrfToken()
+  const url   = "https://translate.google.com/_/TranslateWebserverUi/data/batchexecute"
+  const body  = token 
+    ? packageRpc(text, langSrc, langTgt) + `&f.sid=${token}`
+    : packageRpc(text, langSrc, langTgt)
+  console.log("Using XSRF token:", token)
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -105,7 +127,9 @@ async function translateText(text, langSrc, langTgt) {
     },
     body: body
   })
+  console.log("Translation response status:", response.status)
   const text2 = await response.text()
+  console.log("Translation raw response:", text2.slice(0, 200))
   return parseTranslation(text2)
 }
 
