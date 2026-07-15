@@ -10,11 +10,13 @@
     "js": ["js/main.js"],
     "css": ["style.css"]
   }],
-  "permissions": ["storage"],
+  "permissions": ["storage", "cookies"],
   "host_permissions": [
     "http://localhost:8765/*",
     "https://translate.google.com/*",
-    "https://translate.googleapis.com/*"
+    "https://translate.googleapis.com/*",
+        "https://speech.platform.bing.com/*"
+
   ]
 }
 

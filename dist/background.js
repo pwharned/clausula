@@ -150,6 +150,145 @@ function parseTranslation(responseText) {
   return null
 }
 
+
+const SEC_MS_GEC_VERSION   = "1-143.0.3650.75"
+const TRUSTED_CLIENT_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"
+async function generateSecMsGec(clockSkew = 0) {
+  const WIN_EPOCH = 11644473600
+  let ticks  = (Date.now() / 1000) + clockSkew
+  ticks     += WIN_EPOCH
+  ticks     -= ticks % 300
+  ticks     *= 1e9 / 100
+  const strToHash  = `${Math.floor(ticks)}${TRUSTED_CLIENT_TOKEN}`
+  const encoder    = new TextEncoder()
+  const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(strToHash))
+  const hashArray  = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase()
+}
+function generateMuid() {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()
+}
+async function setMuidCookie(muid) {
+  return new Promise((resolve) => {
+    chrome.cookies.set({
+      url:    "https://speech.platform.bing.com",
+      name:   "muid",
+      value:  muid,
+      secure: true
+    }, resolve)
+  })
+}
+async function fetchAudioMicrosoft(sentence) {
+  const voice        = 'fa-IR-DilaraNeural'
+  const secMsGec     = await generateSecMsGec()
+  const connectionId = crypto.randomUUID().replace(/-/g, '')
+  const muid         = generateMuid()
+  await setMuidCookie(muid)
+  const wsUrl =
+    `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1` +
+    `?TrustedClientToken=${TRUSTED_CLIENT_TOKEN}` +
+    `&Sec-MS-GEC=${secMsGec}` +
+    `&Sec-MS-GEC-Version=${SEC_MS_GEC_VERSION}` +
+    `&ConnectionId=${connectionId}`
+  console.log("Connecting to:", wsUrl)
+  console.log("Sec-MS-GEC:", secMsGec)
+  console.log("MUID:", muid)
+  return new Promise((resolve, reject) => {
+    const ws        = new WebSocket(wsUrl)
+    let audioChunks = []
+    let hasError    = false
+    ws.binaryType = "arraybuffer"
+    ws.onopen = () => {
+      console.log("WebSocket connected")
+      const configMessage = {
+        context: {
+          synthesis: {
+            audio: {
+              metadataoptions: {
+                sentenceBoundaryEnabled: false,
+                wordBoundaryEnabled:     true
+              },
+              outputFormat: "audio-24khz-48kbitrate-mono-mp3"
+            }
+          }
+        }
+      }
+      ws.send(
+        `X-Timestamp:${new Date().toISOString()}\r\n` +
+        `Content-Type:application/json; charset=utf-8\r\n` +
+        `Path:speech.config\r\n\r\n` +
+        JSON.stringify(configMessage)
+      )
+      const ssml =
+        `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='fa'>` +
+        `<voice name='${voice}'>` +
+        `<prosody pitch='+0Hz' rate='+0%' volume='+0%'>` +
+        `${sentence}` +
+        `</prosody>` +
+        `</voice>` +
+        `</speak>`
+      ws.send(
+        `X-RequestId:${crypto.randomUUID().replace(/-/g, '')}\r\n` +
+        `Content-Type:application/ssml+xml\r\n` +
+        `X-Timestamp:${new Date().toISOString()}Z\r\n` +
+        `Path:ssml\r\n\r\n` +
+        ssml
+      )
+    }
+    ws.onmessage = (event) => {
+      if (typeof event.data === 'string') {
+        console.log("Text message:", event.data.slice(0, 100))
+        return
+      }
+      if (event.data instanceof ArrayBuffer) {
+        const data = new Uint8Array(event.data)
+        // First 2 bytes are header length per edge-tts source
+        const headerLength = (data[0] << 8) | data[1]
+        const headerBytes  = data.slice(2, headerLength + 2)
+        const audioData    = data.slice(headerLength + 2)
+        const headerText   = new TextDecoder('utf-8').decode(headerBytes)
+        console.log("Binary header:", headerText.slice(0, 100))
+        if (headerText.includes('Path:audio') && audioData.length > 0) {
+          audioChunks.push(audioData)
+        }
+        if (headerText.includes('Path:turn.end')) {
+          const totalLength = audioChunks.reduce((acc, chunk) => acc + chunk.length, 0)
+          const combined    = new Uint8Array(totalLength)
+          let offset        = 0
+          for (const chunk of audioChunks) {
+            combined.set(chunk, offset)
+            offset += chunk.length
+          }
+          const binary = combined.reduce((acc, b) => acc + String.fromCharCode(b), '')
+          resolve(btoa(binary))
+          ws.close()
+        }
+      }
+    }
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error)
+	console.error("WebSocket error event:", JSON.stringify(error))
+console.error("WebSocket readyState:", ws.readyState)
+    }
+    ws.onclose = (event) => {
+  console.log("WebSocket closed:")
+  console.log("  code:", event.code)
+  console.log("  reason:", event.reason)
+  console.log("  wasClean:", event.wasClean)
+  console.log("  audioChunks received:", audioChunks.length)
+      console.log("WebSocket closed:", event.code, event.reason)
+      if (!hasError && audioChunks.length === 0) {
+        reject(new Error(`WebSocket closed: ${event.code} ${event.reason}`))
+      }
+    }
+  })
+}
+// Update AUDIO_REQUEST handler
 // Keep service worker alive during operations
 let keepAliveInterval = null
 function startKeepAlive() {
@@ -199,22 +338,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       })
     return true
   }
-  if (message.type === "AUDIO_REQUEST") {
-    if (message.lang === "auto") {
-      stopKeepAlive()
-      sendResponse({ success: false, error: "Cannot generate audio for unknown language" })
-      return true
-    }
-    fetchAudio(message.word, message.sentence, message.lang)
-      .then(base64 => storeAudioInAnki(message.word, message.sentence, message.lang, base64))
-      .then(filename => {
-        stopKeepAlive()
-        sendResponse({ success: true, filename })
-      })
-      .catch(err => {
-        stopKeepAlive()
-        sendResponse({ success: false, error: err.toString() })
-      })
+if (message.type === "AUDIO_REQUEST") {
+  if (message.lang === "auto") {
+    sendResponse({ success: false, error: "Cannot generate audio for unknown language" })
     return true
   }
+  const audioPromise = message.lang === "fa"
+    ? fetchAudioMicrosoft(message.sentence)
+    : fetchAudio(message.word, message.sentence, message.lang)
+  audioPromise
+    .then(base64 => storeAudioInAnki(message.word, message.sentence, message.lang, base64))
+    .then(filename => sendResponse({ success: true, filename }))
+    .catch(err    => sendResponse({ success: false, error: err.toString() }))
+  return true
+}
+
 })
+
+
+
+
