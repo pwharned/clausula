@@ -111,25 +111,39 @@ async function getXsrfToken() {
   console.warn("Could not find XSRF token")
   return null
 }
+
 async function translateText(text, langSrc, langTgt) {
-  const token = await getXsrfToken()
-  const url   = "https://translate.google.com/_/TranslateWebserverUi/data/batchexecute"
-  const body  = token 
-    ? packageRpc(text, langSrc, langTgt) + `&f.sid=${token}`
-    : packageRpc(text, langSrc, langTgt)
-  console.log("Using XSRF token:", token)
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type":  "application/x-www-form-urlencoded;charset=utf-8",
-      "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36",
-      "Referer":       "https://translate.google.com/"
-    },
-    body: body
-  })
-  console.log("Translation response status:", response.status)
-  const text2 = await response.text()
-  console.log("Translation raw response:", text2.slice(0, 200))
+  const url  = "https://translate.google.com/_/TranslateWebserverUi/data/batchexecute"
+  const body = packageRpc(text, langSrc, langTgt)
+  const makeRequest = async (extraBody = "") => {
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
+        "User-Agent":   "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36",
+        "Referer":      "https://translate.google.com/"
+      },
+      body: body + extraBody
+    })
+  }
+  // First attempt without token
+  let response  = await makeRequest()
+  let text2     = await response.text()
+  // If 400, extract token from error response and retry
+  if (response.status === 400) {
+    console.log("Got 400, extracting XSRF token from error response")
+    const tokenMatch = text2.match(/"xsrf","([^"]+)"/)
+    if (tokenMatch) {
+      const xsrfToken = tokenMatch[1]
+      console.log("Retrying with XSRF token:", xsrfToken)
+      response = await makeRequest(`&at=${encodeURIComponent(xsrfToken)}`)
+      text2    = await response.text()
+      console.log("Retry response status:", response.status)
+      console.log("Retry raw response:", text2.slice(0, 200))
+    } else {
+      console.error("Could not extract XSRF token from error response")
+    }
+  }
   return parseTranslation(text2)
 }
 
