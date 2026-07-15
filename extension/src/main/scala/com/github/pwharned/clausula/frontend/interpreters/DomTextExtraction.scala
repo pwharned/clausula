@@ -41,14 +41,26 @@ class DomTextExtraction extends TextExtraction[Future] {
         child = child.nextSibling
       result
   def trimSentence(word: Word, sentence: String): Either[ValidationError, Sentence] =
-    sentence.sliding(200).find(x => x.contains(word.value)) match {
-      case Some(value) =>
-        val lastSpace = value.lastIndexOf(' ')
-        val s = sentence.sliding(word.length).zipWithIndex.find(x => x._1 == word.value).get
-        if s._2 == sentence.length() - word.length then Sentence(value) else Sentence(value.take(lastSpace))
+    if sentence.length <= 200 then Sentence(sentence)
+    else
+      val wordIndex = sentence.indexOf(word.value)
+      if wordIndex == -1 then Left(EmptySentence)
+      else
+        // Center the window around the word
+        val halfWindow = 100
+        val rawStart = (wordIndex - halfWindow).max(0)
+        val rawEnd = (wordIndex + word.length + halfWindow).min(sentence.length)
+        // Walk right from rawStart to find a complete word boundary
+        val start =
+          if rawStart == 0 then 0
+          else sentence.indexOf(' ', rawStart) + 1
+        // Walk left from rawEnd to find a complete word boundary
+        val end =
+          if rawEnd == sentence.length then sentence.length
+          else sentence.lastIndexOf(' ', rawEnd)
+        val trimmed = sentence.substring(start, end).trim
+        Sentence(trimmed)
 
-      case None => throw new RuntimeException(s"Could not find word ${word.value} in ${sentence} ")
-    }
   def extractSentence(
     word: Word,
     node: dom.Node
