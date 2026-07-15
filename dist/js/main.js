@@ -7328,7 +7328,7 @@ $p.qR = (function(word, sentence, language) {
         return resolve$2(new $c_s_util_Right((("[sound:" + filename) + "]")));
       } else {
         var error = response$2.error;
-        console.error((((((("Audio error: for {" + word) + ", ") + sentence) + ": ") + language.gl()) + " "));
+        console.error((((((((("Audio error: for {" + word) + ", ") + sentence) + ": ") + language.gl()) + " : ") + error) + " "));
         return resolve$2(new $c_s_util_Left(new $c_Lcom_github_pwharned_clausula_extension_domain_ApiError(0, error)));
       }
     }))));

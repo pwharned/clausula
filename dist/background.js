@@ -59,41 +59,6 @@ async function storeAudioInAnki(word, sentence, lang, base64Audio) {
   return filename
 }
 // Add to existing message listener
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "ANKI_REQUEST") {
-    fetch("http://localhost:8765", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(message.payload)
-    })
-    .then(r => r.json())
-    .then(data => sendResponse({ success: true, data }))
-    .catch(err => sendResponse({ success: false, error: err.toString() }))
-    return true
-  }
-
-if (message.type === "TRANSLATE_REQUEST") {
-  translateText(message.text, message.langSrc, message.langTgt)
-    .then(result => {
-      if (result) sendResponse({ 
-        success:      true, 
-        result:       result.translation,
-        detectedLang: result.detectedLang
-      })
-      else sendResponse({ success: false, error: "Could not parse translation" })
-    })
-    .catch(err => sendResponse({ success: false, error: err.toString() }))
-  return true
-}
-  if (message.type === "AUDIO_REQUEST") {
-    fetchAudio(message.word, message.sentence, message.lang)
-      .then(base64 => storeAudioInAnki(message.word, message.sentence, message.lang, base64))
-      .then(filename => sendResponse({ success: true,  filename }))
-      .catch(err    => sendResponse({ success: false, error: err.toString() }))
-    return true
-  }
-})
-
 
 async function getXsrfToken() {
   const response = await fetch("https://translate.google.com", {
@@ -184,3 +149,72 @@ function parseTranslation(responseText) {
   }
   return null
 }
+
+// Keep service worker alive during operations
+let keepAliveInterval = null
+function startKeepAlive() {
+  keepAliveInterval = setInterval(() => {
+    chrome.runtime.getPlatformInfo(() => {})
+  }, 20000)
+}
+function stopKeepAlive() {
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval)
+    keepAliveInterval = null
+  }
+}
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  startKeepAlive()
+  if (message.type === "ANKI_REQUEST") {
+    fetch("http://localhost:8765", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(message.payload)
+    })
+    .then(r => r.json())
+    .then(data => {
+      stopKeepAlive()
+      sendResponse({ success: true, data })
+    })
+    .catch(err => {
+      stopKeepAlive()
+      sendResponse({ success: false, error: err.toString() })
+    })
+    return true
+  }
+  if (message.type === "TRANSLATE_REQUEST") {
+    translateText(message.text, message.langSrc, message.langTgt)
+      .then(result => {
+        stopKeepAlive()
+        if (result) sendResponse({
+          success:      true,
+          result:       result.translation,
+          detectedLang: result.detectedLang
+        })
+        else sendResponse({ success: false, error: "Could not parse translation" })
+      })
+      .catch(err => {
+        stopKeepAlive()
+        sendResponse({ success: false, error: err.toString() })
+      })
+    return true
+  }
+  if (message.type === "AUDIO_REQUEST") {
+    if (message.lang === "auto") {
+      stopKeepAlive()
+      sendResponse({ success: false, error: "Cannot generate audio for unknown language" })
+      return true
+    }
+    fetchAudio(message.word, message.sentence, message.lang)
+      .then(base64 => storeAudioInAnki(message.word, message.sentence, message.lang, base64))
+      .then(filename => {
+        stopKeepAlive()
+        sendResponse({ success: true, filename })
+      })
+      .catch(err => {
+        stopKeepAlive()
+        sendResponse({ success: false, error: err.toString() })
+      })
+    return true
+  }
+})

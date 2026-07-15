@@ -43,7 +43,9 @@ class FetchAudioGeneration extends AudioGeneration[Future]:
             resolve(Right(s"[sound:$filename]"))
           else
             val error = response.error.asInstanceOf[String]
-            dom.console.error(s"Audio error: for {${word.value}, ${sentence.value}: ${language.displayName} ")
+            dom.console.error(
+              s"Audio error: for {${word.value}, ${sentence.value}: ${language.displayName} : ${error} "
+            )
             resolve(Left(ApiError(0, error)))
       )
     )
