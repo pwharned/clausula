@@ -110,6 +110,8 @@ async function translateText(text, langSrc, langTgt) {
 }
 
 function parseTranslation(responseText) {
+	console.log(responseText)
+
   const lines = responseText.split('\n')
   for (const line of lines) {
     if (line.includes('MkEWBc')) {
