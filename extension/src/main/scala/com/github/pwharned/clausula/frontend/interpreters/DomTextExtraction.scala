@@ -41,25 +41,28 @@ class DomTextExtraction extends TextExtraction[Future] {
         child = child.nextSibling
       result
   def trimSentence(word: Word, sentence: String): Either[ValidationError, Sentence] =
-    if sentence.length <= 200 then Sentence(sentence)
+    import java.net.URLEncoder
+    def encodedLength(s: String): Int =
+      URLEncoder.encode(s, "UTF-8").length
+    val limit = 200
+    if encodedLength(sentence) <= limit then Sentence(sentence)
     else
       val wordIndex = sentence.indexOf(word.value)
       if wordIndex == -1 then Left(EmptySentence)
       else
-        // Center the window around the word
-        val halfWindow = 100
-        val rawStart = (wordIndex - halfWindow).max(0)
-        val rawEnd = (wordIndex + word.length + halfWindow).min(sentence.length)
-        // Walk right from rawStart to find a complete word boundary
-        val start =
-          if rawStart == 0 then 0
-          else sentence.indexOf(' ', rawStart) + 1
-        // Walk left from rawEnd to find a complete word boundary
-        val end =
-          if rawEnd == sentence.length then sentence.length
-          else sentence.lastIndexOf(' ', rawEnd)
-        val trimmed = sentence.substring(start, end).trim
-        Sentence(trimmed)
+        var trimmedSentence = sentence
+        val wordPos = trimmedSentence.indexOf(word.value)
+        if wordPos == -1 then Left(EmptySentence)
+        else
+          // Drop words from left or right until encoded length fits
+          // Always keep the target word
+          while encodedLength(trimmedSentence) > limit && trimmedSentence.split(" ").length > 1 do
+            val distanceFromLeft = wordPos
+            val distanceFromRight = trimmedSentence.length - 1 - wordPos
+            if distanceFromLeft >= distanceFromRight then
+              trimmedSentence = trimmedSentence.split(" ").tail.mkString(" ")
+            else trimmedSentence = trimmedSentence.split(" ").init.mkString(" ")
+          Sentence(trimmedSentence)
 
   def extractSentence(
     word: Word,

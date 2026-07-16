@@ -60,9 +60,8 @@ object Main:
 
                   translationSentence <-
                     translator.translate[Sentence](sentence, lang, KnownLanguage.English)
-                  detectedLang <- Future(
-                    translationSentence.toOption.flatMap(_.detectedLanguage).getOrElse(KnownLanguage.Auto)
-                  )
+                  detectedLang = translationSentence.toOption.flatMap(_.detectedLanguage).getOrElse(KnownLanguage.Auto)
+
                   translationWord <-
                     translator
                       .translate(
@@ -70,14 +69,14 @@ object Main:
                         detectedLang,
                         KnownLanguage.English
                       )
-                  finalLang <- Future(
+                  finalLang =
                     detectedLang match
                       case KnownLanguage.Auto =>
                         translationWord.toOption
                           .flatMap(_.detectedLanguage)
                           .getOrElse(KnownLanguage.Auto)
                       case other => other
-                  )
+
                   audioTag <- audio.generate(word, sentence, finalLang)
 
                 } yield for {
