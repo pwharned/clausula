@@ -101,40 +101,55 @@ object Main:
     dom.document.addEventListener(
       "mouseup",
       (event: dom.MouseEvent) =>
-        val target = event.target.asInstanceOf[dom.Element]
-        if target.closest("#clausula-root") != null then ()
-        else
-          AppBus.popupState.now() match
-            case PopupState.Creating   => ()
-            case PopupState.Created(_) => ()
-            case _ =>
-              val selection = dom.window.getSelection()
-              if selection == null || selection.toString.trim.isEmpty then AppBus.popupState.set(PopupState.Hidden)
-              else
-                val selectedText = selection.toString.trim
-                val node = selection.anchorNode
-                Word(selectedText) match
-                  case Left(_) => AppBus.popupState.set(PopupState.Hidden)
-                  case Right(word) =>
-                    extractor
-                      .extractSentence(word, node)
-                      .foreach:
-                        case Left(_) =>
-                          AppBus.popupState.set(PopupState.Hidden)
-                        case Right(sentence) =>
-                          extractor
-                            .detectLanguage(sentence)
-                            .foreach:
-                              case Left(_) =>
-                                AppBus.popupState.set(PopupState.Hidden)
-                              case Right(lang) =>
-                                val preview: PopupState.Preview = PopupState.Preview(
-                                  word,
-                                  sentence,
-                                  lang,
-                                  (event.clientX, event.clientY)
-                                )
-                                AppBus.position.set((event.clientX, event.clientY))
-                                AppBus.lastPreview = Some(preview)
-                                AppBus.popupState.set(preview)
+        try
+          val target = event.target.asInstanceOf[dom.Element]
+          dom.console.log(s"mouseup fired, target: ${target.nodeName}")
+          if target.closest("#clausula-root") != null then dom.console.log("Clicked inside popup, ignoring")
+          else
+            AppBus.popupState.now() match
+              case PopupState.Creating   => dom.console.log("Creating, ignoring")
+              case PopupState.Created(_) => dom.console.log("Created, ignoring")
+              case _ =>
+                val selection = dom.window.getSelection()
+                dom.console.log(s"Selection: ${if selection == null then "null" else selection.toString}")
+                if selection == null || selection.toString.trim.isEmpty then AppBus.popupState.set(PopupState.Hidden)
+                else
+                  val selectedText = selection.toString.trim
+                  val node = selection.anchorNode
+                  val offset = selection.anchorOffset
+                  dom.console.log(s"Selected text: $selectedText, node: ${node.nodeName}, offset: $offset")
+                  Word(selectedText) match
+                    case Left(err) =>
+                      dom.console.log(s"Word validation failed: $err")
+                      AppBus.popupState.set(PopupState.Hidden)
+                    case Right(word) =>
+                      dom.console.log(s"Word ok: ${word.value}, calling extractSentence")
+                      extractor
+                        .extractSentence(word, node, offset)
+                        .foreach:
+                          case Left(err) =>
+                            dom.console.log(s"extractSentence failed: $err")
+                            AppBus.popupState.set(PopupState.Hidden)
+                          case Right(sentence) =>
+                            dom.console.log(s"Sentence: ${sentence.value}")
+                            extractor
+                              .detectLanguage(sentence)
+                              .foreach:
+                                case Left(err) =>
+                                  dom.console.log(s"detectLanguage failed: $err")
+                                  AppBus.popupState.set(PopupState.Hidden)
+                                case Right(lang) =>
+                                  dom.console.log(s"Language: ${lang.displayName}")
+                                  val preview: PopupState.Preview = PopupState.Preview(
+                                    word,
+                                    sentence,
+                                    lang,
+                                    (event.clientX, event.clientY)
+                                  )
+                                  AppBus.position.set((event.clientX, event.clientY))
+                                  AppBus.lastPreview = Some(preview)
+                                  AppBus.popupState.set(preview)
+        catch
+          case e: Throwable =>
+            dom.console.error(s"Exception in mouseup handler: ${e.getMessage}")
     )

@@ -1,6 +1,7 @@
 package com.github.pwharned.clausula.extension.programs
 import com.github.pwharned.clausula.extension.algebras.*
 import com.github.pwharned.clausula.extension.domain.*
+import com.github.pwharned.clausula.extension.interpreters.WordContext
 import org.scalajs.dom
 def createClozeCard[F[_]: cats.Monad](
   event: dom.MouseEvent,
@@ -14,41 +15,49 @@ def createClozeCard[F[_]: cats.Monad](
 ): F[Either[AppError, NoteId]] =
   import cats.syntax.all.*
   for
-    wordResult <- extraction.extractWord(event)
-    sentenceResult <- wordResult.fold(
+    contextResult <- extraction.extractWord(event)
+    sentenceResult <- contextResult.fold(
       err => cats.Monad[F].pure(Left(err)),
-      word => extraction.extractSentence(word, event.target.asInstanceOf[dom.Node])
+      ctx => extraction.extractSentence(ctx.word, ctx.node, ctx.offset)
     )
     langResult <- sentenceResult.fold(
       err => cats.Monad[F].pure(Left(err)),
       sentence => extraction.detectLanguage(sentence)
     )
-    result <- (wordResult, sentenceResult, langResult).tupled.fold(
+    result <- contextResult.fold(
       err => cats.Monad[F].pure(Left(err)),
-      (word, sentence, lang) =>
-        for
-          translationResult <- translation.translate(sentence, lang, targetLanguage)
-          audioResult <- audio.generate(word, sentence, lang)
-          noteResult <- translationResult.fold(
-            err => cats.Monad[F].pure(Left(err)),
-            translated =>
-              sentence
-                .toCloze(word)
-                .fold(
-                  err => cats.Monad[F].pure(Left(err)),
-                  clozeText =>
-                    anki.addNote(
-                      ClozeNote(
-                        text = clozeText,
-                        translation = Some(translated.text),
-                        audio = audioResult.toOption,
-                        deck = deck,
-                        language = lang,
-                        tags = List(lang.code)
-                      )
-                    )
-                )
-          )
-        yield noteResult
+      ctx =>
+        sentenceResult.fold(
+          err => cats.Monad[F].pure(Left(err)),
+          sentence =>
+            langResult.fold(
+              err => cats.Monad[F].pure(Left(err)),
+              lang =>
+                for
+                  translationResult <- translation.translate(sentence, lang, targetLanguage)
+                  audioResult <- audio.generate(ctx.word, sentence, lang)
+                  noteResult <- translationResult.fold(
+                    err => cats.Monad[F].pure(Left(err)),
+                    translated =>
+                      sentence
+                        .toCloze(ctx.word)
+                        .fold(
+                          err => cats.Monad[F].pure(Left(err)),
+                          clozeText =>
+                            anki.addNote(
+                              ClozeNote(
+                                text = clozeText,
+                                translation = Some(translated.text),
+                                audio = audioResult.toOption,
+                                deck = deck,
+                                language = lang,
+                                tags = List(lang.code)
+                              )
+                            )
+                        )
+                  )
+                yield noteResult
+            )
+        )
     )
   yield result
